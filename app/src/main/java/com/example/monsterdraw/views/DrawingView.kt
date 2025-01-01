@@ -18,6 +18,7 @@ class DrawingView(context: Context, attrs: AttributeSet) : View(context, attrs) 
     private var drawState = DrawingState.MONSTER
 
 
+
     private var boneStartX = 0f
     private var boneStartY = 0f
     private var boneEndX = 0f
@@ -26,6 +27,9 @@ class DrawingView(context: Context, attrs: AttributeSet) : View(context, attrs) 
     private var touchdownY = 0f
     private var difX = 0f
     private var difY = 0f
+    private var pointIndexSelected = 0
+
+    private var bonePointOffset = 30
 
 
     init {
@@ -40,7 +44,10 @@ class DrawingView(context: Context, attrs: AttributeSet) : View(context, attrs) 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         canvas.drawPath(path, paint)
-        canvas.drawPath(_translate(bonesPath), bonesPaint)
+//        canvas.drawPath(_translate(bonesPath), bonesPaint)
+        canvas.drawPath(bonesPath, bonesPaint)
+        canvas.drawOval(boneStartX - bonePointOffset, boneStartY - bonePointOffset, boneStartX + bonePointOffset, boneStartY + bonePointOffset, bonesPaint)
+        canvas.drawOval(boneEndX - bonePointOffset, boneEndY - bonePointOffset, boneEndX + bonePointOffset, boneEndY + bonePointOffset, bonesPaint)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -71,15 +78,17 @@ class DrawingView(context: Context, attrs: AttributeSet) : View(context, attrs) 
             DrawingState.BONES -> {
                 boneStartX = x
                 boneStartY = y
-//                bonesPath.moveTo(x, y)
             }
             DrawingState.MONSTER -> {
                 path.moveTo(x, y)
             }
             DrawingState.MOVE -> {
                 //todo save touched point for ref later
-                touchdownX = x
-                touchdownY = y
+
+                    touchdownX = x
+                    touchdownY = y
+
+
             }
         }
     }
@@ -89,14 +98,18 @@ class DrawingView(context: Context, attrs: AttributeSet) : View(context, attrs) 
                 bonesPath.reset()
                 bonesPath.moveTo(boneStartX, boneStartY)
                 bonesPath.lineTo(x, y)
+                boneEndX = x
+                boneEndY = y
             }
             DrawingState.MONSTER -> {
                 path.lineTo(x, y)
             }
             DrawingState.MOVE -> {
-                //todo translate bonesPath
-                difX = x - touchdownX
-                difY = y - touchdownY
+                bonesPath.reset()
+                bonesPath.moveTo(boneStartX, boneStartY)
+                val newPoint = translatePointInCircle(boneStartX, boneStartY, boneEndX, boneEndY, x - touchdownX, y - touchdownY)
+                bonesPath.lineTo(newPoint.first, newPoint.second)
+
             }
         }
     }
@@ -143,8 +156,61 @@ class DrawingView(context: Context, attrs: AttributeSet) : View(context, attrs) 
         return p
 
     }
+    fun _translateLastPoint(path: android.graphics.Path): android.graphics.Path {
+        var isFirst = true
+        val p = android.graphics.Path()
+        val points = mutableListOf<Point>()
+        val pIterator = android.graphics.PathMeasure(path, false)
+        val length = pIterator.length
+        val step = 1f
+        var distance = 0f
+        while (distance < length) {
+            val point = FloatArray(2)
+            pIterator.getPosTan(distance, point, null)
+            points.add(Point(point[0].toInt(), point[1].toInt()))
+            distance += step
+        }
+        for (point in points) {
+            if (isFirst) {
+//                p.moveTo(point.x + difX, point.y + difY)
+                p.moveTo(point.x*1f, point.y*1f)
+                isFirst = false
+            } else {
+                p.lineTo(point.x + difX, point.y + difY)
+            }
+        }
+        return p
+
+    }
+    fun translatePointInCircle(ax: Float, ay: Float, bx: Float, by: Float, diffX: Float, diffY: Float): Pair<Float, Float> {
+        // Calculate the radius
+        val radius = Math.hypot((bx - ax).toDouble(), (by - ay).toDouble()).toFloat()
+
+        // Calculate the new position of B
+        val newBx = bx + diffX
+        val newBy = by + diffY
+
+        // Calculate the angle of the new position relative to A
+        val angle = Math.atan2((newBy - ay).toDouble(), (newBx - ax).toDouble())
+
+        // Calculate the constrained position of B
+        val constrainedBx = ax + radius * Math.cos(angle).toFloat()
+        val constrainedBy = ay + radius * Math.sin(angle).toFloat()
+
+        return Pair(constrainedBx, constrainedBy)
+    }
+
+    fun translatePoint(x: Float, y: Float, path: android.graphics.Path) {
+        val newX = x + difX
+        val newY = y + difY
+        path.lineTo(newX, newY)
+    }
+
+
 }
 
 enum class DrawingState {
     MOVE, BONES, MONSTER
 }
+
+class FloatPoint(val x: Float, val y: Float)
